@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>连小理 · 班费透明工作流</title>
+<meta name="description" content="班级班费公开账目（只读）。数据由连小理工作流产出。">
+<!-- 移动端浏览器地址栏配色：与暖纸底一致，页面不再被一条突兀的白/黑栏切断 -->
+<meta name="theme-color" content="#F7F4EE">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 阅读进度墨线：读到哪里，墨走到哪里。
+     由 CSS 滚动驱动动画（animation-timeline: scroll()）绘制，跑在合成线程、零主线程开销；
+     不支持该特性的浏览器（以及打印）直接不显示，不降级成 JS 滚动监听。 -->
+<div class="read-bar" aria-hidden="true"></div>
+
+<a class="skip-link" href="#overview">跳到账目内容</a>
+
+<!-- ============ 账本页眉 ============ -->
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="masthead-title">
+      <p class="masthead-kicker">公开账册 · 本期公示</p>
+      <h1 id="pageTitle">连小理 · 班费透明工作流</h1>
+      <p class="masthead-meta" id="metaLine">正在载入…</p>
+    </div>
+    <!-- 朱红印章：账册的公信力符号（与「更正」戳记同一支朱红；纯装饰，读屏跳过） -->
+    <div class="seal-stamp" aria-hidden="true"><span>班费</span><span>公账</span></div>
+    <div class="masthead-right">
+      <span>账目更新</span>
+      <b id="updatedAt">—</b>
+      <button class="print-btn" id="printBtn" type="button" title="打印或保存为 PDF">打印 / PDF</button>
+    </div>
+  </div>
+  <div class="rule-double" aria-hidden="true"></div>
+</header>
+
+<!-- ============ 分区导航：桌面＝左侧「账册目录」/ 手机＝底部导航（同一份 DOM，只换排布） ============ -->
+<nav class="side-nav" id="sideNav" aria-label="页面分区">
+  <!-- 会滑动的高亮块：位置由 JS 按当前项算出来（见 updateNavIndicator），位移走 transform 过渡 -->
+  <span class="nav-indicator" id="navIndicator" aria-hidden="true"></span>
+  <p class="side-nav-title">账册目录</p>
+  <div class="side-nav-inner" id="tabsInner" role="tablist">
+    <button class="tab active" id="tab-overview" type="button" role="tab" aria-controls="pane-overview" data-tab="overview" aria-selected="true">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg></span>
+      <span class="tab-txt">总览</span>
+    </button>
+    <button class="tab" id="tab-collect" type="button" role="tab" aria-controls="pane-collect" data-tab="collect" aria-selected="false">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.4 12.3l2.5 2.5 4.7-5.2"/></svg></span>
+      <span class="tab-txt">收缴</span>
+    </button>
+    <button class="tab" id="tab-category" type="button" role="tab" aria-controls="pane-category" data-tab="category" aria-selected="false">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 5h16.4l-6.2 7.2v5.6l-4 2.2v-7.8z"/></svg></span>
+      <span class="tab-txt">支出</span>
+    </button>
+    <button class="tab" id="tab-ledger" type="button" role="tab" aria-controls="pane-ledger" data-tab="ledger" aria-selected="false">
+      <span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span>
+      <span class="tab-txt">明细</span>
+    </button>
+  </div>
+  <!-- 本区目录：随滚动高亮当前小节（桌面侧边栏专用，移动端隐藏）。
+       条目由 JS 按当前分区的 section 生成，不写死。 -->
+  <div class="side-nav-sub" id="subNav" aria-label="本区小节"></div>
+</nav>
+
+<main class="wrap" id="mainWrap">
+
+  <section class="pane" id="pane-overview" role="tabpanel" aria-labelledby="tab-overview" aria-label="总览">
+
+  <!-- ============ 概览 ============ -->
+  <section id="overview">
+    <div class="hero anim anim-1">
+      <p class="hero-label">当前总余额</p>
+      <p class="hero-value" id="balance"><span class="cur">¥</span>—</p>
+
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="k">累计收入</div>
+          <div class="v v-in" id="incomeTotal">—</div>
+        </div>
+        <div class="hero-stat">
+          <div class="k">累计支出</div>
+          <div class="v v-out" id="expenseTotal">—</div>
+        </div>
+      </div>
+
+      <!-- 收缴进度摘要：把「还差多少钱收齐」并到总览，点一下切到「收缴」页签看名单 -->
+      <button class="hero-collect" id="heroCollect" type="button" hidden>
+        <span class="hc-top">
+          <span>班费收缴</span>
+          <span class="hc-amt" id="hcAmt">—</span>
+          <span class="hc-pct" id="hcPct">—</span>
+        </span>
+        <span class="hc-track" aria-hidden="true">
+          <span class="hc-fill" id="hcFill" style="width:0%"></span>
+        </span>
+        <span class="hc-hint" id="hcHint"></span>
+      </button>
+
+      <div class="budget" id="budgetBlock" hidden>
+        <div class="budget-top">
+          <span id="budgetLabel">学期预算使用</span>
+          <b id="budgetValue">—</b>
+        </div>
+        <div class="budget-track" role="img" id="budgetTrack" aria-label="预算使用进度">
+          <div class="budget-fill" id="budgetFill" style="width:0%"></div>
+          <span class="budget-warn-mark" id="budgetWarnMark" hidden aria-hidden="true"></span>
+        </div>
+        <p class="budget-low" id="budgetLow" hidden></p>
+        <div class="progress-marks" style="margin-top:8px">
+          <span class="mk" id="budgetRemain">—</span>
+          <span class="mk" id="budgetTotal">—</span>
+        </div>
+      </div>
+
+      <p class="consistency" id="consistency">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="consistencyText">正在核对账目…</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 余额走势 ============ -->
+  <section id="trend">
+    <div class="sheet anim anim-2">
+      <div class="sheet-head">
+        <h2>余额走势</h2>
+        <div class="head-tools">
+          <span class="tag" id="trendRange">—</span>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div class="trend-wrap" id="trendWrap"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 最近三笔 + 支出构成：宽屏并成两栏，省掉一屏的纵向滚动（<900px 时仍上下堆叠） -->
+  <div class="ov-pair">
+
+  <!-- ============ 最近三笔 ============ -->
+  <section id="recent">
+    <div class="sheet anim anim-3">
+      <div class="sheet-head">
+        <h2>最近三笔</h2>
+        <div class="head-tools">
+          <button class="chip" type="button" id="toLedgerBtn">看全部明细</button>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div class="mini-rows" id="recentList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 支出构成 ============ -->
+  <section id="mix">
+    <div class="sheet anim anim-4">
+      <div class="sheet-head">
+        <h2>支出构成</h2>
+        <div class="head-tools">
+          <span class="tag">按类别累计</span>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div class="donut-wrap" id="mixChart"></div>
+      </div>
+    </div>
+  </section>
+
+  </div><!-- /ov-pair -->
+
+  </section><!-- /pane-overview -->
+
+  <section class="pane" id="pane-collect" role="tabpanel" aria-labelledby="tab-collect" aria-label="班费收缴" hidden>
+
+  <!-- ============ 班费收缴明细 ============ -->
+  <section id="collect">
+    <div class="sheet anim anim-3" id="membersPanel">
+      <div class="sheet-head">
+        <h2>班费收缴明细</h2>
+        <div class="head-tools">
+          <div class="seg" id="memberSeg" role="group" aria-label="按缴纳状态筛选">
+            <button type="button" data-mstatus="all" class="active" aria-pressed="true">全部</button>
+            <button type="button" data-mstatus="paid" aria-pressed="false">已缴清</button>
+            <button type="button" data-mstatus="unpaid" aria-pressed="false">未缴清</button>
+          </div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <!-- 收缴漏斗：应收 → 已收 → 缺口，一条横条读三层 -->
+        <div class="funnel" id="funnelChart"></div>
+        <div class="progress-box" id="collectBar"></div>
+        <div class="members" id="memberList"></div>
+      </div>
+    </div>
+  </section>
+
+  </section><!-- /pane-collect -->
+
+  <section class="pane" id="pane-category" role="tabpanel" aria-labelledby="tab-category" aria-label="支出类别" hidden>
+
+  <!-- ============ 类别汇总 ============ -->
+  <section id="category">
+    <div class="sheet anim anim-4">
+      <div class="sheet-head">
+        <h2>支出类别汇总</h2>
+        <div class="head-tools">
+          <span class="tag" id="catHint">点击任一类可筛明细</span>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <!-- 瀑布图：钱是怎么花掉的（收入 → 各类别支出 → 结余） -->
+        <div id="wfChart"></div>
+        <!-- 月度收支对照：成对柱（墨蓝＝收入 / 黛青＝支出），把"这个月花了多少"摊开 -->
+        <div id="mbarsChart"></div>
+        <div class="cats" id="categoryList"></div>
+      </div>
+    </div>
+  </section>
+
+  </section><!-- /pane-category -->
+
+  <section class="pane" id="pane-ledger" role="tabpanel" aria-labelledby="tab-ledger" aria-label="逐笔明细" hidden>
+
+  <!-- ============ 逐笔明细 ============ -->
+  <section id="ledger">
+    <div class="sheet anim anim-5">
+      <div class="sheet-head">
+        <h2>逐笔明细</h2>
+        <div class="head-tools">
+          <span class="tag" id="ledgerCount">—</span>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="search-box">
+          <label class="sr-only" for="searchInput">搜索备注、类别、票据编号或日期</label>
+          <input type="search" id="searchInput" placeholder="搜备注 / 类别 / 票据编号…" autocomplete="off">
+          <span class="search-hint" aria-hidden="true">/</span>
+        </div>
+        <label class="sr-only" for="filterCategory">按类别筛选</label>
+        <select id="filterCategory">
+          <option value="">全部类别</option>
+        </select>
+        <label class="sr-only" for="sortSelect">排序方式</label>
+        <select id="sortSelect">
+          <option value="date-desc">日期 ↓ 新在前</option>
+          <option value="date-asc">日期 ↑ 旧在前</option>
+          <option value="amount-desc">金额 ↓ 大在前</option>
+          <option value="amount-asc">金额 ↑ 小在前</option>
+        </select>
+        <div class="seg" id="ledgerSeg" role="group" aria-label="按类型筛选">
+          <button type="button" data-type="all" class="active" aria-pressed="true">全部</button>
+          <button type="button" data-type="out" aria-pressed="false">支出</button>
+          <button type="button" data-type="in" aria-pressed="false">收入</button>
+          <button type="button" data-type="adjust" aria-pressed="false">更正</button>
+        </div>
+      </div>
+
+      <!-- 不加 role="list"：每一行是可点击的 button，套上 list 会让读屏把按钮读成列表项、丢掉「按钮」语义 -->
+      <div class="ledger" id="ledgerList"></div>
+      <p class="empty" id="emptyState" hidden>没有符合条件的记录</p>
+    </div>
+  </section>
+
+  </section><!-- /pane-ledger -->
+
+  <!-- ============ 边界声明 ============ -->
+  <div class="notice anim anim-6" id="noticeBlock" hidden>
+    <span class="notice-tag">边界声明</span>
+    <span id="noticeText"></span>
+  </div>
+
+  <footer class="foot">
+    <span id="footMeta">连小理 · 班费透明工作流</span>
+    <span id="footSource">数据由连小理工作流产出 · 人工核对后更新</span>
+  </footer>
+
+</main>
+
+<!-- ============ 问一问 ============ -->
+<button class="fab" id="askFab" type="button" aria-haspopup="dialog" aria-controls="askDrawer">
+  <span aria-hidden="true">问</span><span class="fab-txt">问一问账目</span>
+</button>
+
+<!-- 快捷键面板：按 ? 开合（Esc 关）。纯键盘入口，鼠标用户不受影响 -->
+<div class="keys" id="keysPanel" role="dialog" aria-label="键盘快捷键" hidden>
+  <div class="keys-inner">
+    <div class="keys-head">
+      <h2>键盘快捷键</h2>
+      <button class="icon-btn" type="button" id="keysClose" aria-label="关闭">×</button>
+    </div>
+    <dl class="keys-list">
+      <dt><kbd>1</kbd>–<kbd>4</kbd></dt><dd>跳到第 N 个分区</dd>
+      <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>在分区之间轮转</dd>
+      <dt><kbd>Home</kbd> <kbd>End</kbd></dt><dd>跳第一个 / 最后一个分区</dd>
+      <dt><kbd>/</kbd></dt><dd>聚焦明细搜索</dd>
+      <dt><kbd>Esc</kbd></dt><dd>关闭抽屉 / 本面板</dd>
+      <dt><kbd>?</kbd></dt><dd>开合本面板</dd>
+    </dl>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<aside class="drawer" id="askDrawer" role="dialog" aria-modal="false" aria-labelledby="askTitle" hidden>
+  <div class="drawer-head">
+    <h2 id="askTitle">问一问账目</h2>
+    <span class="sub" id="askSub">只答本页数据</span>
+    <button class="icon-btn" type="button" data-close="askDrawer" aria-label="关闭问答窗口">✕</button>
+  </div>
+  <div class="drawer-body" id="chatBody">
+    <div class="chat" id="chatList"></div>
+    <div class="chips" id="chatChips"></div>
+  </div>
+  <div class="chat-mode" id="chatMode">
+    <span class="dot" aria-hidden="true"></span>
+    <span id="chatModeText">正在检测回答方式…</span>
+    <button type="button" class="chip" id="handoffBtn" title="把问题与一份不含姓名的数据摘要复制到剪贴板，供你在连小理里继续追问">
+      用连小理继续追问
+    </button>
+  </div>
+  <form class="chat-foot" id="chatForm">
+    <label class="sr-only" for="chatInput">输入你的问题</label>
+    <textarea id="chatInput" rows="1" placeholder="例如：这个月团建花了多少？还有谁没缴清？"></textarea>
+    <button class="send" type="submit" id="chatSend">发送</button>
+  </form>
+</aside>
+
+<!-- ============ 条目详情 ============ -->
+<aside class="drawer" id="detailDrawer" role="dialog" aria-modal="false" aria-labelledby="detailTitle" hidden>
+  <div class="drawer-head">
+    <h2 id="detailTitle">条目详情</h2>
+    <button class="icon-btn" type="button" data-close="detailDrawer" aria-label="关闭详情">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="detail" id="detailBody"></div>
+  </div>
+</aside>
+
+<!-- ============ 载入失败 ============ -->
+<div class="error-state" id="errorState" hidden>
+  <h2>账目数据没有载入</h2>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

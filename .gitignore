@@ -1,0 +1,24 @@
+# 密钥：绝不能提交
+.env
+.env.local
+*.key
+*.pem
+
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+*.log
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.orig
+
+# 真实班级数据（只在本地，不进仓库）
+网页/data-真实*.js
+server/data/store-真实*.json

@@ -1,0 +1,13 @@
+{
+  "name": "lianxiaoli-class-fund",
+  "version": "2.0.0",
+  "private": true,
+  "description": "连小理 · 班费透明工作流 —— 单端口服务：前台只读看板 + 生活委员可写后台",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

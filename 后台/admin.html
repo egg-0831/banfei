@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>生活委员后台 · 班费透明工作流</title>
+<meta name="description" content="生活委员的账目管理后台：录入台账、维护收缴名单、设置预算、校验数据、发布到前台。">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<!-- 阅读进度墨线（滚动驱动；不支持的浏览器不显示） -->
+<div class="read-bar" aria-hidden="true"></div>
+
+<!-- ============ 门禁 ============ -->
+<div class="gate" id="gate">
+  <form class="gate-card" id="gateForm">
+    <h1>生活委员后台</h1>
+    <p class="sub">连小理 · 班费透明工作流</p>
+    <div class="field">
+      <label for="tokenInput">管理口令</label>
+      <input type="password" id="tokenInput" autocomplete="current-password" placeholder="请输入管理口令">
+    </div>
+    <button class="btn btn-primary" type="submit" style="width:100%">进入后台</button>
+    <p class="gate-err" id="gateErr"></p>
+  </form>
+</div>
+
+<!-- ============ 主界面 ============ -->
+<div id="app" hidden>
+
+  <div class="head-sticky">
+  <header class="top">
+    <div class="top-inner">
+      <div class="top-title">
+        <span class="kicker">后台</span>
+        <h1 id="topClass">班费透明工作流</h1>
+      </div>
+      <div class="top-right">
+        <span class="dirty-flag" id="dirtyFlag" hidden>有未发布的修改</span>
+        <span class="pill" id="connPill"><span class="dot"></span><span id="connText">检测中…</span></span>
+        <span class="pill" id="llmPill"><span class="dot"></span><span id="llmText">模型检测中…</span></span>
+        <button class="btn btn-sm" type="button" id="logoutBtn">退出</button>
+      </div>
+    </div>
+    <div class="rule-double"></div>
+  </header>
+
+  <nav class="tabs" aria-label="后台分区">
+    <div class="tabs-inner" id="tabsInner" role="tablist">
+      <button class="tab active" id="tab-ledger" role="tab" aria-controls="pane-ledger" data-tab="ledger">台账<span class="badge" id="badgeLedger">0</span></button>
+      <button class="tab" id="tab-members" role="tab" aria-controls="pane-members" data-tab="members">收缴<span class="badge" id="badgeMembers">0</span></button>
+      <button class="tab" id="tab-budget" role="tab" aria-controls="pane-budget" data-tab="budget">预算</button>
+      <button class="tab" id="tab-check" role="tab" aria-controls="pane-check" data-tab="check">校验<span class="badge" id="badgeCheck">—</span></button>
+      <button class="tab" id="tab-import" role="tab" aria-controls="pane-import" data-tab="import">导入</button>
+      <button class="tab" id="tab-assist" role="tab" aria-controls="pane-assist" data-tab="assist">助手</button>
+    </div>
+  </nav>
+  </div>
+
+  <main class="wrap">
+
+    <!-- ================= 台账 ================= -->
+    <section class="pane" id="pane-ledger" role="tabpanel" aria-labelledby="tab-ledger">
+      <div class="stat-row" style="margin-bottom:18px">
+        <div class="stat"><div class="k">当前总余额</div><div class="v" id="stBalance">—</div></div>
+        <div class="stat"><div class="k">累计收入</div><div class="v" id="stIncome">—</div></div>
+        <div class="stat"><div class="k">累计支出</div><div class="v" id="stExpense">—</div></div>
+        <div class="stat"><div class="k">账目条数</div><div class="v" id="stCount">—</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>新增账目</h2>
+        </div>
+        <div class="card-body">
+          <form id="entryForm">
+            <div class="form-row">
+              <div class="field">
+                <label for="eDate">日期</label>
+                <input type="date" id="eDate" required>
+              </div>
+              <div class="field">
+                <label for="eType">类型</label>
+                <select id="eType">
+                  <option value="out">支出</option>
+                  <option value="in">收入 · 班费收缴</option>
+                  <option value="in-other">收入 · 其他</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label for="eCategory">类别</label>
+                <input type="text" id="eCategory" list="catList" placeholder="如：团建活动费" required>
+                <datalist id="catList"></datalist>
+              </div>
+              <div class="field">
+                <label for="eAmount">金额（元）</label>
+                <input type="number" id="eAmount" step="0.01" min="0" placeholder="0.00" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label for="eReceipt">票据编号</label>
+                <input type="text" id="eReceipt" placeholder="如：P-2026-0929-01，没有就留空">
+              </div>
+              <div class="field">
+                <label for="eNote">备注</label>
+                <input type="text" id="eNote" placeholder="写清楚买了什么，不要写人名">
+              </div>
+            </div>
+            <div style="display:flex;gap:9px;flex-wrap:wrap">
+              <button class="btn btn-primary" type="submit">追加到台账</button>
+              <button class="btn" type="reset">清空</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>账目台账</h2>
+          <div class="tools">
+            <input type="search" id="ledgerSearch" placeholder="搜索备注 / 类别 / 票据" style="width:190px">
+            <select id="ledgerTypeFilter" style="width:110px">
+              <option value="">全部</option>
+              <option value="out">支出</option>
+              <option value="in">收入</option>
+              <option value="adjust">更正</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th><th>类型</th><th>类别</th><th>备注</th>
+                <th>票据编号</th><th class="mono" style="text-align:right">金额</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="ledgerBody"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="ledgerEmpty" hidden>还没有账目记录</p>
+      </div>
+    </section>
+
+    <!-- ================= 收缴 ================= -->
+    <section class="pane" id="pane-members" role="tabpanel" aria-labelledby="tab-members" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>收缴设置</h2>
+          <div class="tools">
+            <label class="hint" style="display:flex;align-items:center;gap:6px">
+              <input type="checkbox" id="mVisible" style="width:auto"> 在前台公示收缴明细
+            </label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="field">
+              <label for="mStandard">每人应缴标准（元）</label>
+              <input type="number" id="mStandard" step="0.01" min="0" placeholder="100.00">
+            </div>
+            <div class="field">
+              <label>收缴概览</label>
+              <div class="out" id="mSummary" style="min-height:auto;padding:8px 12px">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>收缴名单</h2>
+          <div class="tools">
+            <button class="btn btn-sm" type="button" id="addMemberBtn">添加一位</button>
+            <button class="btn btn-sm" type="button" id="fillAllBtn">全部标记为已缴清</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:34%">姓名</th>
+                <th style="width:22%">已缴金额</th>
+                <th style="width:16%">状态</th>
+                <th style="width:16%">前台不公示</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="memberBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 预算 ================= -->
+    <section class="pane" id="pane-budget" role="tabpanel" aria-labelledby="tab-budget" hidden>
+      <div class="card">
+        <div class="card-head"><h2>学期预算</h2></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="field">
+              <label for="bTotal">本学期预算总额（元）</label>
+              <input type="number" id="bTotal" step="0.01" min="0" placeholder="留空或 0 表示不设预算">
+            </div>
+            <div class="field">
+              <label for="bWarn">低余额提醒阈值（元）</label>
+              <input type="number" id="bWarn" step="0.01" min="0" placeholder="200">
+              <p class="note">余额低于此值时，由连小理定时任务<b>私聊生活委员本人</b>，不在群里发布。</p>
+            </div>
+          </div>
+          <div class="stat-row" style="margin-top:6px">
+            <div class="stat"><div class="k">预算总额</div><div class="v" id="bShowTotal">—</div></div>
+            <div class="stat"><div class="k">已支出</div><div class="v" id="bShowUsed">—</div></div>
+            <div class="stat"><div class="k">剩余</div><div class="v" id="bShowLeft">—</div></div>
+            <div class="stat"><div class="k">使用率</div><div class="v" id="bShowPct">—</div></div>
+          </div>
+          <div class="budget-bar" id="budgetBarBlock" hidden>
+            <div class="budget-track" id="bTrack" role="img" aria-label="预算使用进度">
+              <div class="budget-fill" id="bFill" style="width:0%"></div>
+              <span class="budget-warn-mark" id="bWarnMark" hidden aria-hidden="true"></span>
+            </div>
+            <p class="budget-low" id="bLow" hidden></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 校验 ================= -->
+    <section class="pane" id="pane-check" role="tabpanel" aria-labelledby="tab-check" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>数据契约自检</h2>
+          <div class="tools">
+            <button class="btn btn-sm" type="button" id="runCheckBtn">重新校验</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="checks" id="checkList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 导入 ================= -->
+    <section class="pane" id="pane-import" role="tabpanel" aria-labelledby="tab-import" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>从连小理工作流导入</h2>
+        </div>
+        <div class="card-body">
+          <div class="field">
+            <label for="importText">把连小理「导出」节点输出的整段内容粘到这里</label>
+            <textarea id="importText" placeholder="window.__LEDGER__ = { ... }  或直接粘 { &quot;ledger&quot;: [...] } 也可以"></textarea>
+          </div>
+          <div style="display:flex;gap:9px;flex-wrap:wrap">
+            <button class="btn btn-primary" type="button" id="parseImportBtn">解析并预览</button>
+            <button class="btn" type="button" id="applyImportBtn" disabled>合并到台账</button>
+            <button class="btn" type="button" id="loadFrontBtn">载入当前前台数据</button>
+          </div>
+          <div class="out" id="importOut" style="margin-top:14px">还没有解析任何内容。</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>基本设置</h2></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="field">
+              <label for="metaClass">班级名</label>
+              <input type="text" id="metaClass" placeholder="2026 级 XX 班">
+            </div>
+            <div class="field">
+              <label for="metaTerm">学期</label>
+              <input type="text" id="metaTerm" placeholder="2026—2027 学年 第一学期">
+            </div>
+          </div>
+          <div class="field">
+            <label for="metaNotice">前台边界声明</label>
+            <textarea id="metaNotice" style="min-height:70px"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 助手 ================= -->
+    <section class="pane" id="pane-assist" role="tabpanel" aria-labelledby="tab-assist" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>助手</h2>
+          <span class="hint" id="assistModeHint">—</span>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px">
+            <button class="btn" type="button" data-assist="audit">账目体检</button>
+            <button class="btn" type="button" data-assist="compose">生成公示说明</button>
+            <button class="btn" type="button" data-assist="rules">本地规则体检</button>
+          </div>
+          <div class="out" id="assistOut">选择上面任意一个动作。</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>自由提问</h2>
+        </div>
+        <div class="card-body">
+          <form id="assistAskForm" style="display:flex;gap:9px;flex-wrap:wrap">
+            <input type="text" id="assistAskInput" placeholder="例如：这个月哪一类花得最多？" style="flex:1 1 240px">
+            <button class="btn btn-primary" type="submit">问</button>
+          </form>
+          <div class="out" id="assistAskOut" style="margin-top:14px;min-height:60px">—</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ 底部操作条 ============ -->
+  <div class="actionbar">
+    <div class="actionbar-inner">
+      <span class="status" id="barStatus">就绪</span>
+      <div class="right">
+        <button class="btn" type="button" id="exportBtn">导出 data.js</button>
+        <button class="btn" type="button" id="resetBtn">放弃本地修改</button>
+        <button class="btn btn-primary" type="button" id="publishBtn">发布到前台</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="admin.js"></script>
+</body>
+</html>
